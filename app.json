@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Beach Bar",
+    "slug": "beach-bar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "beachbar",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.beachbar.game"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F0F1A"
+      },
+      "package": "com.beachbar.game"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
