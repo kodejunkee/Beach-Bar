@@ -7,18 +7,18 @@ import TurnTimer from '@/components/TurnTimer';
 import FeedbackDisplay from '@/components/FeedbackDisplay';
 import GameStatusBar from '@/components/StatusBar';
 import ResultsModal from '@/components/ResultsModal';
-// import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
+import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
 
 const GAME_BG = require('@/assets/images/backgrounds/game screen beach background.png');
 const ICON_CHECKMARK = require('@/assets/images/UI/icons/submit.png');
 const ICON_SKIP = require('@/assets/images/UI/icons/skip.png');
 const ICON_UNDO = require('@/assets/images/UI/icons/undo.png');
-// const GAME_MUSIC = require('@/assets/audio/game screen music.mp3');
+const GAME_MUSIC = require('@/assets/audio/game screen music.mp3');
 
 export default function GameScreen() {
     const [hasSwapped, setHasSwapped] = useState(false);
 
-    // useBackgroundMusic(GAME_MUSIC);
+    useBackgroundMusic(GAME_MUSIC);
 
     const {
         phase,

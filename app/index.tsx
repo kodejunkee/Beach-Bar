@@ -17,10 +17,10 @@ import {
 import { router } from 'expo-router';
 import { useGame } from '@/context/GameContext';
 import * as Clipboard from 'expo-clipboard';
-// import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
+import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
 
 const MAIN_BG = require('@/assets/images/backgrounds/main screen background.png');
-// const HOME_MUSIC = require('@/assets/audio/home screen music.mp3');
+const HOME_MUSIC = require('@/assets/audio/home screen music.mp3');
 
 // UI button assets
 const BTN_QUICK_MATCH = require('@/assets/images/UI/buttons/Quick Match.png');
@@ -39,7 +39,7 @@ export default function HomeScreen() {
     const [isMuted, setIsMuted] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    // useBackgroundMusic(HOME_MUSIC);
+    useBackgroundMusic(HOME_MUSIC);
     const [lobbyCountdown, setLobbyCountdown] = useState(300);
     const lobbyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 

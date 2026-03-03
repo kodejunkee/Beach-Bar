@@ -29,7 +29,7 @@ export function getSocket(playerId: string): Socket {
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        transports: ['websocket'],
+        transports: ['polling', 'websocket'], // polling first, then upgrade to ws
     });
 
     return socket;

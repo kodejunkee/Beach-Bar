@@ -1,7 +1,27 @@
-// Background music hook - DISABLED until expo-audio native mismatch is resolved.
-// Re-enable by switching to a development build (npx expo run:android).
-// See: https://docs.expo.dev/develop/development-builds/introduction/
+import { useEffect, useRef } from 'react';
+import { useAudioPlayer } from 'expo-audio';
 
-export function useBackgroundMusic(_source: number) {
-    // no-op stub
+/**
+ * Plays looping background music while the component is mounted.
+ * Pauses on unmount so each screen can have its own track.
+ */
+export function useBackgroundMusic(source: number) {
+    const player = useAudioPlayer(source);
+    const started = useRef(false);
+
+    useEffect(() => {
+        if (!player) return;
+
+        player.loop = true;
+        player.volume = 0.4;
+
+        if (!started.current) {
+            player.play();
+            started.current = true;
+        }
+
+        return () => {
+            player.pause();
+        };
+    }, [player]);
 }

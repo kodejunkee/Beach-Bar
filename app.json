@@ -4,20 +4,41 @@
     "slug": "beach-bar",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "beachbar",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0F1A"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.beachbar.game"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F0F1A"
       },
-      "package": "com.beachbar.game"
+      "package": "com.beachbar.game",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      "expo-audio"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b343fbf5-67ab-4f75-b58e-2006494ea23d"
+      }
+    },
+    "owner": "kode_junkee"
   }
 }
