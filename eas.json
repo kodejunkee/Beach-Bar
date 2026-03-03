@@ -6,13 +6,19 @@
         "preview": {
             "android": {
                 "buildType": "apk"
+            },
+            "env": {
+                "EXPO_PUBLIC_SERVER_URL": "https://beach-bar-vbuw.onrender.com"
             }
         },
         "production": {
             "android": {
                 "buildType": "app-bundle"
             },
-            "ios": {}
+            "ios": {},
+            "env": {
+                "EXPO_PUBLIC_SERVER_URL": "https://beach-bar-vbuw.onrender.com"
+            }
         }
     },
     "submit": {
