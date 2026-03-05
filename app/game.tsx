@@ -14,7 +14,7 @@ const ICON_CHECKMARK = require('@/assets/images/UI/icons/submit.png');
 const ICON_SKIP = require('@/assets/images/UI/icons/skip.png');
 const ICON_UNDO = require('@/assets/images/UI/icons/undo.png');
 const ICON_SETTINGS = require('@/assets/images/UI/icons/settings.png');
-const GAME_MUSIC = require('@/assets/audio/game screen music.mp3');
+const GAME_MUSIC = require('@/assets/audio/game_screen_music.mp3');
 
 export default function GameScreen() {
     const [hasSwapped, setHasSwapped] = useState(false);

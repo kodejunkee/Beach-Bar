@@ -29,7 +29,7 @@ import MonthlyPassModal from '@/components/MonthlyPassModal';
 import { supabase } from '@/lib/supabase';
 
 const MAIN_BG = require('@/assets/images/backgrounds/main screen background.png');
-const HOME_MUSIC = require('@/assets/audio/home screen music.mp3');
+const HOME_MUSIC = require('@/assets/audio/home_screen_music.mp3');
 
 // Other UI assets
 const LOBBY_FRAME = require('@/assets/images/UI/frames/lobby code background.png');
