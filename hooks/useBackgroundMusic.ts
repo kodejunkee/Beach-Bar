@@ -1,27 +1,40 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useAudioPlayer } from 'expo-audio';
+import { useNavigation } from 'expo-router';
 
 /**
- * Plays looping background music while the component is mounted.
- * Pauses on unmount so each screen can have its own track.
+ * Plays looping background music while the component is mounted AND focused.
+ * Pauses on blur or unmount so each screen can have its own track.
  */
-export function useBackgroundMusic(source: number) {
+export function useBackgroundMusic(source: number, muted: boolean = false) {
     const player = useAudioPlayer(source);
-    const started = useRef(false);
+    const navigation = useNavigation();
 
     useEffect(() => {
         if (!player) return;
 
         player.loop = true;
-        player.volume = 0.4;
+        player.volume = muted ? 0 : 0.4;
 
-        if (!started.current) {
+        // Listener for when the screen comes into focus
+        const unsubscribeFocus = navigation.addListener('focus', () => {
             player.play();
-            started.current = true;
+        });
+
+        // Listener for when the screen loses focus (navigating away)
+        const unsubscribeBlur = navigation.addListener('blur', () => {
+            player.pause();
+        });
+
+        // Handle initial play state based on current focus
+        if (navigation.isFocused()) {
+            player.play();
         }
 
         return () => {
+            unsubscribeFocus();
+            unsubscribeBlur();
             player.pause();
         };
-    }, [player]);
+    }, [player, muted, navigation]);
 }

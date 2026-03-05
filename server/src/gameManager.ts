@@ -10,6 +10,7 @@ import {
     DISCONNECT_GRACE_MS,
     ClientToServerEvents,
     ServerToClientEvents,
+    GameOverRewards,
 } from './types';
 import {
     generateSolution,
@@ -19,6 +20,18 @@ import {
     evaluateFeedback,
     checkWin,
 } from './gameLogic';
+import { supabaseAdmin } from './supabase';
+import { computeAIMove, getAIThinkDelay, cleanupAI } from './aiPlayer';
+
+// ─── Leveling helpers ────────────────────────────────────────
+const REWARD_WINNER_EXP = 30;
+const REWARD_WINNER_GOLD = 15;
+const REWARD_LOSER_EXP = 10;
+const REWARD_LOSER_GOLD = 5;
+
+function requiredExpForLevel(level: number): number {
+    return Math.floor(100 * Math.pow(level, 1.5));
+}
 
 /**
  * Manages active games: creation, turn flow, timers, disconnections.
@@ -35,8 +48,10 @@ export class GameManager {
 
     // ─── Player Registration ─────────────────────────────────
 
-    registerPlayer(playerId: string, socketId: string): void {
-        this.players.set(playerId, { playerId, socketId, connected: true });
+    registerPlayer(playerId: string, socketId: string, username: string = 'Player'): void {
+        const existing = this.players.get(playerId);
+        const resolvedUsername = username !== 'Player' ? username : (existing?.username || 'Player');
+        this.players.set(playerId, { playerId, socketId, username: resolvedUsername, connected: true });
     }
 
     updatePlayerSocket(playerId: string, socketId: string): void {
@@ -56,22 +71,21 @@ export class GameManager {
     /**
      * Create a new game between two players. Sends `game:start` to both.
      */
-    createGame(
-        p1: { playerId: string; socketId: string },
-        p2: { playerId: string; socketId: string }
-    ): GameState {
+    async createGame(
+        p1: { playerId: string; socketId: string; username: string },
+        p2: { playerId: string; socketId: string; username: string },
+        isRanked: boolean = false
+    ): Promise<GameState> {
         const gameId = uuidv4();
         const solution = generateSolution();
         const scrambledBoard = generateScrambledBoard(solution);
 
-        // Randomly choose who goes first
         const playerOrder: [string, string] =
             Math.random() < 0.5
                 ? [p1.playerId, p2.playerId]
                 : [p2.playerId, p1.playerId];
 
-        const activePlayerId = playerOrder[0];
-        const turnDeadline = Date.now() + TURN_DURATION_MS;
+        const roundDeadline = Date.now() + TURN_DURATION_MS;
 
         const game: GameState = {
             gameId,
@@ -96,48 +110,195 @@ export class GameManager {
                 },
             },
             playerOrder,
-            activePlayerId,
-            turnNumber: 1,
-            turnDeadline,
-            turnTimer: null,
+            roundNumber: 1,
+            roundDeadline,
+            roundTimer: null,
             winnerId: null,
             disconnectTimers: {},
+            isRanked,
         };
-
         this.games.set(gameId, game);
         this.playerGameMap.set(p1.playerId, gameId);
         this.playerGameMap.set(p2.playerId, gameId);
 
         // Register players
-        this.registerPlayer(p1.playerId, p1.socketId);
-        this.registerPlayer(p2.playerId, p2.socketId);
+        this.registerPlayer(p1.playerId, p1.socketId, p1.username);
+        this.registerPlayer(p2.playerId, p2.socketId, p2.username);
+
+        // Fetch frames
+        const getFrame = async (pid: string) => {
+            const { data } = await supabaseAdmin
+                .from('profiles')
+                .select('equipped_frame, shop_items!equipped_frame(asset_url)')
+                .eq('id', pid)
+                .single();
+            return (data as any)?.shop_items?.asset_url || null;
+        };
+
+        const [p1Frame, p2Frame] = await Promise.all([getFrame(p1.playerId), getFrame(p2.playerId)]);
 
         // Send game:start to each player
         this.emitToPlayer(p1.playerId, 'game:start', {
             gameId,
             board: [...scrambledBoard],
             yourPlayerId: p1.playerId,
+            yourFrame: p1Frame,
             opponentId: p2.playerId,
-            activePlayerId,
-            turnDeadline,
-            turnDuration: TURN_DURATION_MS,
-            turnNumber: 1,
+            opponentUsername: p2.username,
+            opponentFrame: p2Frame,
+            roundDeadline,
+            roundDuration: TURN_DURATION_MS,
+            roundNumber: 1,
+            isRanked: game.isRanked,
         });
         this.emitToPlayer(p2.playerId, 'game:start', {
             gameId,
             board: [...scrambledBoard],
             yourPlayerId: p2.playerId,
+            yourFrame: p2Frame,
             opponentId: p1.playerId,
-            activePlayerId,
-            turnDeadline,
-            turnDuration: TURN_DURATION_MS,
-            turnNumber: 1,
+            opponentUsername: p1.username,
+            opponentFrame: p1Frame,
+            roundDeadline,
+            roundDuration: TURN_DURATION_MS,
+            roundNumber: 1,
+            isRanked: game.isRanked,
         });
 
-        // Start turn timer
-        this.startTurnTimer(gameId);
+        // Start round timer
+        this.startRoundTimer(gameId);
 
         return game;
+    }
+
+    /**
+     * Create a single-player game against AI.
+     */
+    async createAIGame(
+        player: { playerId: string; socketId: string; username: string }
+    ): Promise<GameState> {
+        const aiId = `ai-${uuidv4().slice(0, 8)}`;
+        const gameId = uuidv4();
+        const solution = generateSolution();
+        const scrambledBoard = generateScrambledBoard(solution);
+
+        const playerOrder: [string, string] = [player.playerId, aiId];
+        const roundDeadline = Date.now() + TURN_DURATION_MS;
+
+        const game: GameState = {
+            gameId,
+            status: 'playing',
+            solution,
+            players: {
+                [player.playerId]: {
+                    playerId: player.playerId,
+                    board: [...scrambledBoard],
+                    preSwapBoard: null,
+                    feedback: null,
+                    hasSwapped: false,
+                    moveSubmitted: false,
+                },
+                [aiId]: {
+                    playerId: aiId,
+                    board: [...scrambledBoard],
+                    preSwapBoard: null,
+                    feedback: null,
+                    hasSwapped: false,
+                    moveSubmitted: false,
+                },
+            },
+            playerOrder,
+            roundNumber: 1,
+            roundDeadline,
+            roundTimer: null,
+            winnerId: null,
+            disconnectTimers: {},
+            isRanked: false,
+        };
+
+        this.games.set(gameId, game);
+        this.playerGameMap.set(player.playerId, gameId);
+        this.playerGameMap.set(aiId, gameId);
+
+        // Register human player
+        this.registerPlayer(player.playerId, player.socketId, player.username);
+        // Register AI as a virtual player (no real socket)
+        this.players.set(aiId, {
+            playerId: aiId,
+            socketId: 'ai-socket',
+            username: 'AI Bot',
+            connected: true,
+        });
+
+        // Fetch guest frame (AI has none)
+        const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('equipped_frame, shop_items!equipped_frame(asset_url)')
+            .eq('id', player.playerId)
+            .single();
+
+        const opponentFrame = null; // AI has no frame for now
+
+        // Fetch user frame
+        const yourFrame = (profile as any)?.shop_items?.asset_url || null;
+
+        // Send game:start only to the human player
+        this.emitToPlayer(player.playerId, 'game:start', {
+            gameId,
+            board: [...scrambledBoard],
+            yourPlayerId: player.playerId,
+            yourFrame,
+            opponentId: aiId,
+            opponentUsername: 'AI Bot',
+            opponentFrame,
+            roundDeadline,
+            roundDuration: TURN_DURATION_MS,
+            roundNumber: 1,
+            isRanked: false,
+        });
+
+        this.startRoundTimer(gameId);
+
+        // Schedule the AI's first move
+        this.scheduleAIMove(game, aiId);
+
+        return game;
+    }
+
+    /**
+     * Schedule the AI to make a move after a thinking delay.
+     */
+    private scheduleAIMove(game: GameState, aiId: string): void {
+        if (game.status !== 'playing') return;
+        const aiState = game.players[aiId];
+        if (!aiState || aiState.moveSubmitted) return;
+
+        const delay = getAIThinkDelay();
+        setTimeout(() => {
+            if (game.status !== 'playing') return;
+            if (aiState.moveSubmitted) return;
+
+            // Compute and apply the AI's swap (new TRULY BLIND AI logic)
+            const move = computeAIMove(aiId, aiState.board, aiState.feedback);
+            if (validateSwap(move.index1, move.index2, aiState.board.length)) {
+                aiState.preSwapBoard = [...aiState.board];
+                aiState.board = applySwap(aiState.board, move.index1, move.index2);
+                aiState.hasSwapped = true;
+            }
+
+            // Mark AI as submitted
+            aiState.moveSubmitted = true;
+
+            // Notify human that opponent submitted
+            const humanId = game.playerOrder.find(id => id !== aiId)!;
+            this.emitToPlayer(humanId, 'player:submitted', { playerId: aiId });
+
+            // If human already submitted, process round end
+            const humanState = game.players[humanId];
+            if (humanState.moveSubmitted) {
+                this.processRoundEnd(game);
+            }
+        }, delay);
     }
 
     // ─── Move Handling ───────────────────────────────────────
@@ -153,9 +314,6 @@ export class GameManager {
         const game = this.getPlayerGame(playerId);
         if (!game) return this.emitError(playerId, 'NOT_IN_GAME', 'You are not in a game');
         if (game.status !== 'playing') return;
-        if (game.activePlayerId !== playerId) {
-            return this.emitError(playerId, 'NOT_YOUR_TURN', 'It is not your turn');
-        }
 
         const playerState = game.players[playerId];
         if (playerState.hasSwapped) {
@@ -185,9 +343,6 @@ export class GameManager {
         const game = this.getPlayerGame(playerId);
         if (!game) return this.emitError(playerId, 'NOT_IN_GAME', 'You are not in a game');
         if (game.status !== 'playing') return;
-        if (game.activePlayerId !== playerId) {
-            return this.emitError(playerId, 'NOT_YOUR_TURN', 'It is not your turn');
-        }
 
         const playerState = game.players[playerId];
         if (!playerState.hasSwapped || !playerState.preSwapBoard) {
@@ -213,9 +368,6 @@ export class GameManager {
         const game = this.getPlayerGame(playerId);
         if (!game) return this.emitError(playerId, 'NOT_IN_GAME', 'You are not in a game');
         if (game.status !== 'playing') return;
-        if (game.activePlayerId !== playerId) {
-            return this.emitError(playerId, 'NOT_YOUR_TURN', 'It is not your turn');
-        }
 
         const playerState = game.players[playerId];
         if (playerState.moveSubmitted) {
@@ -223,98 +375,119 @@ export class GameManager {
         }
 
         playerState.moveSubmitted = true;
-        this.processTurnEnd(game, playerId);
+
+        const opponentId = game.playerOrder.find(id => id !== playerId)!;
+        const opponentState = game.players[opponentId];
+
+        // Notify the opponent that this player has submitted
+        this.emitToPlayer(opponentId, 'player:submitted', { playerId });
+
+        if (opponentState.moveSubmitted) {
+            // Both players done — resolve the round
+            this.processRoundEnd(game);
+        }
     }
 
-    // ─── Turn Processing ────────────────────────────────────
+    // ─── Round Processing ────────────────────────────────────
 
     /**
-     * Process the end of a turn: evaluate feedback, check win, advance turn.
+     * Process the end of a round: evaluate feedback, check win, advance round.
      */
-    private processTurnEnd(game: GameState, playerId: string): void {
-        // Clear turn timer
-        if (game.turnTimer) {
-            clearTimeout(game.turnTimer);
-            game.turnTimer = null;
+    private processRoundEnd(game: GameState): void {
+        // Clear round timer
+        if (game.roundTimer) {
+            clearTimeout(game.roundTimer);
+            game.roundTimer = null;
         }
 
-        const playerState = game.players[playerId];
-        const feedback = evaluateFeedback(playerState.board, game.solution);
-        playerState.feedback = feedback;
+        const p1Id = game.playerOrder[0];
+        const p2Id = game.playerOrder[1];
+        const p1State = game.players[p1Id];
+        const p2State = game.players[p2Id];
 
-        // Check win
-        if (checkWin(playerState.board, game.solution)) {
-            this.endGame(game, playerId, 'solved');
+        p1State.feedback = evaluateFeedback(p1State.board, game.solution);
+        p2State.feedback = evaluateFeedback(p2State.board, game.solution);
+
+        const p1Wins = checkWin(p1State.board, game.solution);
+        const p2Wins = checkWin(p2State.board, game.solution);
+
+        if (p1Wins && p2Wins) {
+            // Both solved simultaneously — it's a tie, pick p1 as nominal winner
+            this.endGame(game, 'tie', 'solved');
+            return;
+        } else if (p1Wins) {
+            this.endGame(game, p1Id, 'solved');
+            return;
+        } else if (p2Wins) {
+            this.endGame(game, p2Id, 'solved');
             return;
         }
 
-        // Advance to next turn
-        this.advanceTurn(game);
+        // Advance to next round
+        this.advanceRound(game);
     }
 
     /**
-     * Advance to the next player's turn.
+     * Advance to the next round.
      */
-    private advanceTurn(game: GameState): void {
-        const currentIndex = game.playerOrder.indexOf(game.activePlayerId);
-        const nextIndex = (currentIndex + 1) % 2;
-        const nextPlayerId = game.playerOrder[nextIndex];
+    private advanceRound(game: GameState): void {
+        game.roundNumber++;
+        game.roundDeadline = Date.now() + TURN_DURATION_MS;
 
-        game.activePlayerId = nextPlayerId;
-        game.turnNumber++;
-        game.turnDeadline = Date.now() + TURN_DURATION_MS;
+        for (const pid of game.playerOrder) {
+            const state = game.players[pid];
+            state.hasSwapped = false;
+            state.moveSubmitted = false;
+            state.preSwapBoard = null;
+        }
 
-        // Reset turn state for the next active player
-        const nextPlayerState = game.players[nextPlayerId];
-        nextPlayerState.hasSwapped = false;
-        nextPlayerState.moveSubmitted = false;
-        nextPlayerState.preSwapBoard = null;
-
-        // Also reset the previous player's turn-specific flags
-        const prevPlayerId = game.playerOrder[currentIndex];
-        const prevPlayerState = game.players[prevPlayerId];
-        prevPlayerState.hasSwapped = false;
-        prevPlayerState.moveSubmitted = false;
-        prevPlayerState.preSwapBoard = null;
-
-        // Emit turn update to both players
+        // Emit round update to both players
         for (const pid of game.playerOrder) {
             const opponentId = game.playerOrder.find((id) => id !== pid)!;
             const myFeedback = game.players[pid].feedback;
             const opponentFeedback = game.players[opponentId].feedback;
 
-            this.emitToPlayer(pid, 'turn:update', {
-                activePlayerId: nextPlayerId,
-                turnNumber: game.turnNumber,
-                turnDeadline: game.turnDeadline,
-                turnDuration: TURN_DURATION_MS,
+            this.emitToPlayer(pid, 'round:update', {
+                roundNumber: game.roundNumber,
+                roundDeadline: game.roundDeadline,
+                roundDuration: TURN_DURATION_MS,
                 yourFeedback: myFeedback,
                 opponentFeedback: opponentFeedback,
             });
         }
 
-        // Start timer for next turn
-        this.startTurnTimer(game.gameId);
+        // Start timer for next round
+        this.startRoundTimer(game.gameId);
+
+        // If AI is in the game, schedule its move
+        const aiId = game.playerOrder.find(pid => pid.startsWith('ai-'));
+        if (aiId) {
+            this.scheduleAIMove(game, aiId);
+        }
     }
 
     // ─── Timer ───────────────────────────────────────────────
 
     /**
-     * Start the 15-second turn timer. On expiry, auto-submit.
+     * Start the 15-second round timer. On expiry, auto-submit for anyone who hasn't.
      */
-    private startTurnTimer(gameId: string): void {
+    private startRoundTimer(gameId: string): void {
         const game = this.games.get(gameId);
         if (!game || game.status !== 'playing') return;
 
-        game.turnTimer = setTimeout(() => {
+        game.roundTimer = setTimeout(() => {
             const g = this.games.get(gameId);
             if (!g || g.status !== 'playing') return;
 
-            const activePlayer = g.players[g.activePlayerId];
-            if (!activePlayer.moveSubmitted) {
-                activePlayer.moveSubmitted = true;
-                this.processTurnEnd(g, g.activePlayerId);
+            let anyoneForced = false;
+            for (const pid of g.playerOrder) {
+                if (!g.players[pid].moveSubmitted) {
+                    g.players[pid].moveSubmitted = true;
+                    anyoneForced = true;
+                }
             }
+
+            this.processRoundEnd(g);
         }, TURN_DURATION_MS);
     }
 
@@ -327,9 +500,9 @@ export class GameManager {
         game.status = 'finished';
         game.winnerId = winnerId;
 
-        if (game.turnTimer) {
-            clearTimeout(game.turnTimer);
-            game.turnTimer = null;
+        if (game.roundTimer) {
+            clearTimeout(game.roundTimer);
+            game.roundTimer = null;
         }
 
         const finalBoards: Record<string, BottleColor[]> = {};
@@ -337,18 +510,144 @@ export class GameManager {
             finalBoards[pid] = [...game.players[pid].board];
         }
 
-        // Emit game:over to both players — solution is revealed HERE only
-        for (const pid of game.playerOrder) {
-            this.emitToPlayer(pid, 'game:over', {
-                winnerId,
-                reason,
-                solution: [...game.solution],
-                finalBoards,
-            });
-        }
+        // Award rewards asynchronously, then emit game:over
+        this.awardMatchRewards(game, winnerId, reason).then((rewardsMap) => {
+            for (const pid of game.playerOrder) {
+                if (pid.startsWith('ai-')) continue;
+
+                this.emitToPlayer(pid, 'game:over', {
+                    winnerId,
+                    reason,
+                    solution: [...game.solution],
+                    finalBoards,
+                    rewards: rewardsMap[pid],
+                });
+            }
+        });
 
         // Cleanup after a short delay
-        setTimeout(() => this.cleanupGame(game.gameId), 5000);
+        setTimeout(() => this.cleanupGame(game.gameId), 10000);
+    }
+
+    /**
+     * Award EXP and Gold to both players after a match.
+     */
+    private async awardMatchRewards(
+        game: GameState,
+        winnerId: string,
+        reason: 'solved' | 'forfeit' | 'surrender'
+    ): Promise<Record<string, GameOverRewards>> {
+        const rewardsMap: Record<string, GameOverRewards> = {};
+        const isAIGame = game.playerOrder.some(pid => pid.startsWith('ai-'));
+        const multiplier = isAIGame ? 0.5 : 1;
+
+        for (const pid of game.playerOrder) {
+            if (pid.startsWith('ai-')) continue;
+
+            const isWinner = pid === winnerId;
+            const isDraw = winnerId === 'draw';
+            const isSurrender = reason === 'surrender';
+            let expGain: number;
+            let goldGain: number;
+
+            if (isDraw) {
+                expGain = Math.floor(REWARD_LOSER_EXP * multiplier);
+                goldGain = Math.floor(REWARD_LOSER_GOLD * multiplier);
+            } else if (isWinner) {
+                expGain = Math.floor(REWARD_WINNER_EXP * multiplier);
+                goldGain = Math.floor(REWARD_WINNER_GOLD * multiplier);
+            } else if (isSurrender) {
+                expGain = 0;
+                goldGain = 0;
+            } else {
+                expGain = Math.floor(REWARD_LOSER_EXP * multiplier);
+                goldGain = Math.floor(REWARD_LOSER_GOLD * multiplier);
+            }
+
+            try {
+                const { data: profile } = await supabaseAdmin
+                    .from('profiles')
+                    .select('exp, gold, level, rp, current_rank, peak_rank, ranked_wins, ranked_losses, highest_rp')
+                    .eq('id', pid)
+                    .single();
+
+                if (!profile) {
+                    rewardsMap[pid] = { exp: expGain, gold: goldGain };
+                    continue;
+                }
+
+                let newExp = profile.exp + expGain;
+                let newGold = profile.gold + goldGain;
+                let currentLevel = profile.level;
+                let leveledUp = false;
+
+                // Check for level up(s)
+                let needed = requiredExpForLevel(currentLevel);
+                while (newExp >= needed) {
+                    newExp -= needed;
+                    currentLevel++;
+                    leveledUp = true;
+                    needed = requiredExpForLevel(currentLevel);
+                }
+
+                // Ranked Points Logic
+                let newRp = profile.rp || 0;
+                let rpChange = 0;
+                let newRank = profile.current_rank || 'Bronze V';
+                let rankChanged: 'promoted' | 'demoted' | null = null;
+                let rankedWins = profile.ranked_wins || 0;
+                let rankedLosses = profile.ranked_losses || 0;
+
+                if (game.isRanked) {
+                    rpChange = this.calculateRpChange(newRank, isWinner && !isDraw);
+                    newRp = Math.max(0, newRp + rpChange);
+
+                    if (!isDraw) {
+                        if (isWinner) rankedWins++;
+                        else rankedLosses++;
+                    }
+
+                    // Call RPC to get new rank name
+                    const { data: rankData } = await supabaseAdmin.rpc('get_rank_from_rp', { rp_val: newRp });
+                    newRank = rankData || newRank;
+
+                    if (newRank !== profile.current_rank) {
+                        rankChanged = rpChange > 0 ? 'promoted' : 'demoted';
+                    }
+                }
+
+                await supabaseAdmin
+                    .from('profiles')
+                    .update({
+                        exp: newExp,
+                        gold: newGold,
+                        level: currentLevel,
+                        rp: newRp,
+                        current_rank: newRank,
+                        ranked_wins: rankedWins,
+                        ranked_losses: rankedLosses,
+                        peak_rank: (profile.peak_rank && this.getRankWeight(newRank) > this.getRankWeight(profile.peak_rank)) ? newRank : (profile.peak_rank || newRank),
+                        highest_rp: Math.max(profile.highest_rp || 0, newRp)
+                    })
+                    .eq('id', pid);
+
+                rewardsMap[pid] = {
+                    exp: expGain,
+                    gold: goldGain,
+                    leveledUp,
+                    newLevel: leveledUp ? currentLevel : undefined,
+                    rpChange: game.isRanked ? rpChange : undefined,
+                    newRp: game.isRanked ? newRp : undefined,
+                    newRank: game.isRanked ? newRank : undefined,
+                    rankChanged: game.isRanked ? rankChanged : undefined,
+                };
+            } catch (err) {
+                console.error(`[rewards] Failed to award rewards to ${pid}:`, err);
+                rewardsMap[pid] = { exp: expGain, gold: goldGain };
+            }
+        }
+
+        return rewardsMap;
     }
 
     /**
@@ -363,6 +662,10 @@ export class GameManager {
             // Clear any disconnect timers
             if (game.disconnectTimers[pid]) {
                 clearTimeout(game.disconnectTimers[pid]);
+            }
+            // Clear AI memory
+            if (pid.startsWith('ai-')) {
+                cleanupAI(pid);
             }
         }
         this.games.delete(gameId);
@@ -448,15 +751,36 @@ export class GameManager {
 
         // Re-send current game state to reconnected player
         const playerState = game.players[playerId];
-        this.emitToPlayer(playerId, 'game:start', {
-            gameId: game.gameId,
-            board: [...playerState.board],
-            yourPlayerId: playerId,
-            opponentId: opponentId || '',
-            activePlayerId: game.activePlayerId,
-            turnDeadline: game.turnDeadline,
-            turnDuration: TURN_DURATION_MS,
-            turnNumber: game.turnNumber,
+        const opponentPlayer = opponentId ? this.players.get(opponentId) : undefined;
+
+        // Fetch frame for reconnection
+        const getFrames = async () => {
+            const [me, op] = await Promise.all([
+                supabaseAdmin.from('profiles').select('equipped_frame, shop_items!equipped_frame(asset_url)').eq('id', playerId).single(),
+                opponentId && !opponentId.startsWith('ai-')
+                    ? supabaseAdmin.from('profiles').select('equipped_frame, shop_items!equipped_frame(asset_url)').eq('id', opponentId).single()
+                    : Promise.resolve({ data: null })
+            ]);
+            return {
+                myFrame: (me.data as any)?.shop_items?.asset_url || null,
+                opFrame: (op.data as any)?.shop_items?.asset_url || null
+            };
+        };
+
+        getFrames().then(({ myFrame, opFrame }) => {
+            this.emitToPlayer(playerId, 'game:start', {
+                gameId: game.gameId,
+                board: [...playerState.board],
+                yourPlayerId: playerId,
+                yourFrame: myFrame,
+                opponentId: opponentId || '',
+                opponentUsername: opponentPlayer?.username || 'Player',
+                opponentFrame: opFrame,
+                roundDeadline: game.roundDeadline,
+                roundDuration: TURN_DURATION_MS,
+                roundNumber: game.roundNumber,
+                isRanked: game.isRanked,
+            });
         });
     }
 
@@ -498,5 +822,42 @@ export class GameManager {
     /** Emit an error to a player. */
     private emitError(playerId: string, code: string, message: string): void {
         this.emitToPlayer(playerId, 'error', { code, message });
+    }
+
+    /** Helper to calculate RP change based on rank and outcome */
+    private calculateRpChange(rank: string, isWinner: boolean): number {
+        if (isWinner) {
+            if (rank.startsWith('Bronze')) return 50;
+            if (rank.startsWith('Silver')) return 45;
+            if (rank.startsWith('Gold')) return 30;
+            if (rank.startsWith('Platinum')) return 30;
+            if (rank.startsWith('Diamond')) return 25;
+            if (rank.startsWith('Grandmaster')) return 20;
+            if (rank.startsWith('Legendary')) return 15;
+            return 25;
+        } else {
+            if (rank.startsWith('Bronze')) return -5;
+            if (rank.startsWith('Silver')) return -10;
+            if (rank.startsWith('Gold')) return -15;
+            if (rank.startsWith('Platinum')) return -20;
+            if (rank.startsWith('Diamond')) return -20;
+            if (rank.startsWith('Grandmaster')) return -25;
+            if (rank.startsWith('Legendary')) return -25;
+            return -20;
+        }
+    }
+
+    /** Helper to compare ranks for peak_rank tracking */
+    private getRankWeight(rank: string): number {
+        const tiers = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Grandmaster', 'Legendary'];
+        const subTiers = ['V', 'IV', 'III', 'II', 'I'];
+
+        const tier = tiers.findIndex(t => rank.startsWith(t));
+        if (rank === 'Legendary') return 1000;
+
+        const subTierStr = rank.split(' ')[1];
+        const subTier = subTiers.indexOf(subTierStr);
+
+        return (tier * 10) + subTier;
     }
 }

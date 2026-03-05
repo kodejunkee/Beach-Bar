@@ -6,7 +6,7 @@ import {
     BottleColor,
     Feedback,
     GameStartData,
-    TurnUpdateData,
+    RoundUpdateData,
     GameOverData,
     LobbyCreatedData,
     ErrorData,
@@ -33,9 +33,10 @@ interface UseSocketState {
     playerId: string | null;
     opponentId: string | null;
     board: BottleColor[];
-    activePlayerId: string | null;
-    turnNumber: number;
-    turnDeadline: number;
+    roundNumber: number;
+    roundDeadline: number;
+    myMoveSubmitted: boolean;
+    opponentSubmitted: boolean;
     myFeedback: Feedback | null;
     opponentFeedback: Feedback | null;
     gameOver: GameOverState | null;
@@ -49,7 +50,9 @@ interface UseSocketActions {
     createLobby: () => void;
     joinLobby: (code: string) => void;
     sendSwap: (index1: number, index2: number) => void;
+    undoMove: () => void;
     submitTurn: () => void;
+    surrender: () => void;
     resetToHome: () => void;
     clearError: () => void;
 }
@@ -65,9 +68,10 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
         playerId: null,
         opponentId: null,
         board: [],
-        activePlayerId: null,
-        turnNumber: 0,
-        turnDeadline: 0,
+        roundNumber: 0,
+        roundDeadline: 0,
+        myMoveSubmitted: false,
+        opponentSubmitted: false,
         myFeedback: null,
         opponentFeedback: null,
         gameOver: null,
@@ -120,9 +124,10 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
                 playerId: data.yourPlayerId,
                 opponentId: data.opponentId,
                 board: data.board,
-                activePlayerId: data.activePlayerId,
-                turnNumber: data.turnNumber,
-                turnDeadline: data.turnDeadline,
+                roundNumber: data.roundNumber,
+                roundDeadline: data.roundDeadline,
+                myMoveSubmitted: false,
+                opponentSubmitted: false,
                 lobbyCode: null,
                 myFeedback: null,
                 opponentFeedback: null,
@@ -135,15 +140,25 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
             setState((s) => ({ ...s, board: data.board }));
         });
 
-        socket.on('turn:update', (data: TurnUpdateData) => {
+        socket.on('round:update', (data: RoundUpdateData) => {
             setState((s) => ({
                 ...s,
-                activePlayerId: data.activePlayerId,
-                turnNumber: data.turnNumber,
-                turnDeadline: data.turnDeadline,
+                roundNumber: data.roundNumber,
+                roundDeadline: data.roundDeadline,
+                myMoveSubmitted: false,
+                opponentSubmitted: false,
                 myFeedback: data.yourFeedback,
                 opponentFeedback: data.opponentFeedback,
             }));
+        });
+
+        socket.on('player:submitted', (data: { playerId: string }) => {
+            setState((s) => {
+                if (data.playerId === s.opponentId) {
+                    return { ...s, opponentSubmitted: true };
+                }
+                return s;
+            });
         });
 
         socket.on('game:over', (data: GameOverData) => {
@@ -213,10 +228,21 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
         socketRef.current.emit('move:swap', { index1, index2 });
     }, []);
 
+    const undoMove = useCallback(() => {
+        if (!socketRef.current) return;
+        socketRef.current.emit('move:undo');
+    }, []);
+
     const submitTurn = useCallback(() => {
         if (!socketRef.current) return;
+        setState((s) => ({ ...s, myMoveSubmitted: true }));
         socketRef.current.emit('turn:submit');
     }, []);
+
+    const surrender = useCallback(() => {
+        if (!socketRef.current || !playerId) return;
+        socketRef.current.emit('game:surrender', { playerId });
+    }, [playerId]);
 
     const resetToHome = useCallback(() => {
         setState((s) => ({
@@ -226,9 +252,10 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
             gameId: null,
             opponentId: null,
             board: [],
-            activePlayerId: null,
-            turnNumber: 0,
-            turnDeadline: 0,
+            roundNumber: 0,
+            roundDeadline: 0,
+            myMoveSubmitted: false,
+            opponentSubmitted: false,
             myFeedback: null,
             opponentFeedback: null,
             gameOver: null,
@@ -247,7 +274,9 @@ export function useSocket(playerId: string | null): UseSocketState & UseSocketAc
         createLobby,
         joinLobby,
         sendSwap,
+        undoMove,
         submitTurn,
+        surrender,
         resetToHome,
         clearError,
     };

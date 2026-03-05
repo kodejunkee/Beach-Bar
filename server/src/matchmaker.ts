@@ -11,6 +11,8 @@ const CODE_LENGTH = 6;
 export class Matchmaker {
     /** Queue of playerIds waiting for random match */
     private quickQueue: { playerId: string; socketId: string }[] = [];
+    /** Queue of playerIds waiting for ranked match */
+    private rankedQueue: { playerId: string; socketId: string }[] = [];
     /** Active lobbies keyed by lobby code */
     private lobbies: Map<string, Lobby> = new Map();
     /** Reverse lookup: playerId → lobby code */
@@ -44,6 +46,35 @@ export class Matchmaker {
     /** Remove a player from the quick-match queue (e.g. on disconnect). */
     leaveQuickMatch(playerId: string): void {
         this.quickQueue = this.quickQueue.filter((p) => p.playerId !== playerId);
+    }
+
+    // ─── Ranked Match ─────────────────────────────────────────
+
+    /**
+     * Add a player to the ranked matchmaking queue.
+     */
+    joinRankedMatch(
+        playerId: string,
+        socketId: string
+    ): { player1: { playerId: string; socketId: string }; player2: { playerId: string; socketId: string } } | null {
+        // Don't double-queue
+        const alreadyQueued = this.rankedQueue.find((p) => p.playerId === playerId);
+        if (alreadyQueued) return null;
+
+        // Try to match with a waiting player
+        if (this.rankedQueue.length > 0) {
+            const opponent = this.rankedQueue.shift()!;
+            return { player1: opponent, player2: { playerId, socketId } };
+        }
+
+        // No one waiting — queue this player
+        this.rankedQueue.push({ playerId, socketId });
+        return null;
+    }
+
+    /** Remove a player from the ranked queue. */
+    leaveRankedMatch(playerId: string): void {
+        this.rankedQueue = this.rankedQueue.filter((p) => p.playerId !== playerId);
     }
 
     // ─── Private Lobbies ─────────────────────────────────────
@@ -173,6 +204,7 @@ export class Matchmaker {
     /** Remove a player from queue and any lobby on disconnect. */
     handleDisconnect(playerId: string): { lobbyCode?: string; wasHost: boolean } {
         this.leaveQuickMatch(playerId);
+        this.leaveRankedMatch(playerId);
 
         const code = this.playerLobbyMap.get(playerId);
         if (code) {

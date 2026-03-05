@@ -9,16 +9,11 @@ import React, {
 import { AppState, AppStateStatus } from 'react-native';
 import { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
-import { getOrCreatePlayerId } from '@/lib/playerId';
-import {
-    BottleColor,
-    Feedback,
-    GameStartData,
-    TurnUpdateData,
-    GameOverData,
-    LobbyCreatedData,
-    ErrorData,
-} from '@/shared/types';
+import { getOrCreatePlayerId, getUsername, setUsername as saveUsername } from '@/lib/playerId';
+import { useAuth } from '@/context/AuthContext';
+import { BottleColor, Feedback, GameStartData, RoundUpdateData, GameOverData, LobbyCreatedData, ErrorData, GameOverRewards } from '@/shared/types';
+import { supabase } from '@/lib/supabase';
+import * as Network from 'expo-network';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -29,31 +24,41 @@ export interface GameOverState {
     reason: 'solved' | 'forfeit' | 'surrender';
     solution: BottleColor[];
     finalBoards: Record<string, BottleColor[]>;
+    rewards?: GameOverRewards;
 }
 
 interface GameState {
     connected: boolean;
+    connectionStatus: 'connecting' | 'connected' | 'error';
+    connectionErrorMessage: string | null;
     phase: GamePhase;
     playerId: string | null;
+    myUsername: string;
     opponentId: string | null;
+    opponentUsername: string;
     gameId: string | null;
     lobbyCode: string | null;
+    myEquippedFrame: string | null;
+    opponentEquippedFrame: string | null;
     board: BottleColor[];
-    activePlayerId: string | null;
-    turnNumber: number;
-    turnDeadline: number;
-    turnDuration: number;
+    roundNumber: number;
+    roundDeadline: number;
+    myMoveSubmitted: boolean;
+    opponentSubmitted: boolean;
     myFeedback: Feedback | null;
     opponentFeedback: Feedback | null;
     gameOver: GameOverState | null;
     opponentConnected: boolean;
     error: ErrorData | null;
     hasPlayedIntro: boolean;
+    isRanked: boolean;
 }
 
 interface GameContextValue extends GameState {
     joinQuickMatch: () => void;
+    joinRankedMatch: () => void;
     cancelQuickMatch: () => void;
+    startAIGame: () => void;
     createLobby: () => void;
     cancelLobby: () => void;
     joinLobby: (code: string) => void;
@@ -64,6 +69,8 @@ interface GameContextValue extends GameState {
     resetToHome: () => void;
     clearError: () => void;
     setHasPlayedIntro: (played: boolean) => void;
+    updateUsername: (name: string) => void;
+    retryConnection: () => void;
 }
 
 // ─── Context ─────────────────────────────────────────────
@@ -84,130 +91,194 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const [state, setState] = useState<GameState>({
         connected: false,
+        connectionStatus: 'connecting',
+        connectionErrorMessage: null,
         phase: 'home',
         playerId: null,
+        myUsername: 'Player',
         opponentId: null,
+        opponentUsername: 'Player',
         gameId: null,
         lobbyCode: null,
+        myEquippedFrame: null,
+        opponentEquippedFrame: null,
         board: [],
-        activePlayerId: null,
-        turnNumber: 0,
-        turnDeadline: 0,
-        turnDuration: 15000,
+        roundNumber: 0,
+        roundDeadline: 0,
+        myMoveSubmitted: false,
+        opponentSubmitted: false,
         myFeedback: null,
         opponentFeedback: null,
         gameOver: null,
         opponentConnected: true,
         error: null,
         hasPlayedIntro: false,
+        isRanked: false,
     });
+
+    const { user, profile } = useAuth();
 
     // ─── Init socket once on mount ───────────────────────
 
     useEffect(() => {
         let cancelled = false;
 
-        getOrCreatePlayerId().then((pid) => {
-            if (cancelled) return;
+        if (!user || !profile) return;
 
-            playerIdRef.current = pid;
-            setState((s) => ({ ...s, playerId: pid }));
+        const pid = profile.id;
+        const username = profile.username;
 
-            const socket = getSocket(pid);
-            socketRef.current = socket;
+        if (cancelled) return;
 
-            // ─── Connection ───────────────────────────────
+        playerIdRef.current = pid;
+        setState((s) => ({ ...s, playerId: pid, myUsername: username }));
 
-            socket.on('connect', () => {
-                setState((s) => ({ ...s, connected: true }));
-            });
+        const socket = getSocket(pid);
+        socketRef.current = socket;
 
-            socket.on('disconnect', () => {
-                setState((s) => ({ ...s, connected: false }));
-            });
+        // ─── Connection ───────────────────────────────
 
-            // ─── Lobby Events ─────────────────────────────
+        socket.on('connect', () => {
+            setState((s) => ({
+                ...s,
+                connected: true,
+                connectionStatus: 'connected',
+                connectionErrorMessage: null
+            }));
+        });
 
-            socket.on('lobby:created', (data: LobbyCreatedData) => {
-                setState((s) => ({ ...s, phase: 'lobby', lobbyCode: data.code }));
-            });
+        socket.on('disconnect', () => {
+            setState((s) => ({
+                ...s,
+                connected: false,
+                connectionStatus: s.connectionStatus === 'error' ? 'error' : 'connecting'
+            }));
+        });
 
-            socket.on('quickmatch:cancelled', () => {
-                setState((s) => ({ ...s, phase: 'home' }));
-            });
-
-            socket.on('lobby:expired', () => {
+        socket.on('connect_error', async (err) => {
+            const networkState = await Network.getNetworkStateAsync();
+            if (!networkState.isConnected || !networkState.isInternetReachable) {
                 setState((s) => ({
                     ...s,
-                    phase: 'home',
-                    lobbyCode: null,
-                    error: { code: 'LOBBY_EXPIRED', message: 'Lobby expired — it was not joined in time.' },
+                    connectionStatus: 'error',
+                    connectionErrorMessage: 'Please check your internet connection.',
                 }));
-            });
-
-            socket.on('lobby:cancelled', () => {
-                setState((s) => ({ ...s, phase: 'home', lobbyCode: null }));
-            });
-
-            // ─── Game Events ──────────────────────────────
-
-            socket.on('game:start', (data: GameStartData) => {
+            } else {
                 setState((s) => ({
                     ...s,
-                    phase: 'playing',
-                    gameId: data.gameId,
-                    playerId: data.yourPlayerId,
-                    opponentId: data.opponentId,
-                    board: data.board,
-                    activePlayerId: data.activePlayerId,
-                    turnNumber: data.turnNumber,
-                    turnDeadline: data.turnDeadline,
-                    turnDuration: data.turnDuration,
-                    lobbyCode: null,
-                    myFeedback: null,
-                    opponentFeedback: null,
-                    gameOver: null,
-                    opponentConnected: true,
+                    connectionStatus: 'error',
+                    connectionErrorMessage: 'Error connecting to server. Please try again later.',
                 }));
-            });
+            }
+        });
 
-            socket.on('board:update', (data: { board: BottleColor[] }) => {
-                setState((s) => ({ ...s, board: data.board }));
-            });
+        // ─── Presence Heartbeat ────────────────────────
+        const updatePresence = async () => {
+            if (!pid) return;
+            await supabase
+                .from('profiles')
+                .update({ last_seen: new Date().toISOString() })
+                .eq('id', pid);
+        };
 
-            socket.on('turn:update', (data: TurnUpdateData) => {
-                setState((s) => ({
-                    ...s,
-                    activePlayerId: data.activePlayerId,
-                    turnNumber: data.turnNumber,
-                    turnDeadline: data.turnDeadline,
-                    turnDuration: data.turnDuration,
-                    myFeedback: data.yourFeedback,
-                    opponentFeedback: data.opponentFeedback,
-                }));
-            });
+        updatePresence(); // Initial ping
+        const presenceInterval = setInterval(updatePresence, 60000); // Pulse every 60s
 
-            socket.on('game:over', (data: GameOverData) => {
-                setState((s) => ({
-                    ...s,
-                    phase: 'finished',
-                    gameOver: {
-                        winnerId: data.winnerId,
-                        reason: data.reason,
-                        solution: data.solution,
-                        finalBoards: data.finalBoards,
-                    },
-                }));
-            });
+        // ─── Lobby Events ─────────────────────────────
 
-            socket.on('opponent:status', (data: { connected: boolean }) => {
-                setState((s) => ({ ...s, opponentConnected: data.connected }));
-            });
+        socket.on('lobby:created', (data: LobbyCreatedData) => {
+            setState((s) => ({ ...s, phase: 'lobby', lobbyCode: data.code }));
+        });
 
-            socket.on('error', (data: ErrorData) => {
-                // Don't change phase for non-critical errors
-                setState((s) => ({ ...s, error: data }));
+        socket.on('quickmatch:cancelled', () => {
+            setState((s) => ({ ...s, phase: 'home' }));
+        });
+
+        socket.on('lobby:expired', () => {
+            setState((s) => ({
+                ...s,
+                phase: 'home',
+                lobbyCode: null,
+                error: { code: 'LOBBY_EXPIRED', message: 'Lobby expired — it was not joined in time.' },
+            }));
+        });
+
+        socket.on('lobby:cancelled', () => {
+            setState((s) => ({ ...s, phase: 'home', lobbyCode: null }));
+        });
+
+        // ─── Game Events ──────────────────────────────
+
+        socket.on('game:start', (data: GameStartData) => {
+            setState((s) => ({
+                ...s,
+                phase: 'playing',
+                gameId: data.gameId,
+                playerId: data.yourPlayerId,
+                opponentId: data.opponentId,
+                opponentUsername: data.opponentUsername || 'Player',
+                opponentEquippedFrame: data.opponentFrame || null,
+                myEquippedFrame: data.yourFrame || null,
+                board: data.board,
+                roundNumber: data.roundNumber,
+                roundDeadline: Date.now() + data.roundDuration,
+                myMoveSubmitted: false,
+                opponentSubmitted: false,
+                lobbyCode: null,
+                myFeedback: null,
+                opponentFeedback: null,
+                gameOver: null,
+                opponentConnected: true,
+                isRanked: data.isRanked || false,
+            }));
+        });
+
+        socket.on('board:update', (data: { board: BottleColor[] }) => {
+            setState((s) => ({ ...s, board: data.board }));
+        });
+
+        socket.on('round:update', (data: RoundUpdateData) => {
+            setState((s) => ({
+                ...s,
+                roundNumber: data.roundNumber,
+                roundDeadline: Date.now() + data.roundDuration,
+                myMoveSubmitted: false,
+                opponentSubmitted: false,
+                myFeedback: data.yourFeedback,
+                opponentFeedback: data.opponentFeedback,
+            }));
+        });
+
+        socket.on('player:submitted', (data: { playerId: string }) => {
+            setState((s) => {
+                if (data.playerId === s.opponentId) {
+                    return { ...s, opponentSubmitted: true };
+                }
+                return s;
             });
+        });
+
+        socket.on('game:over', (data: GameOverData) => {
+            setState((s) => ({
+                ...s,
+                phase: 'finished',
+                gameOver: {
+                    winnerId: data.winnerId,
+                    reason: data.reason,
+                    solution: data.solution,
+                    finalBoards: data.finalBoards,
+                    rewards: data.rewards,
+                },
+            }));
+        });
+
+        socket.on('opponent:status', (data: { connected: boolean }) => {
+            setState((s) => ({ ...s, opponentConnected: data.connected }));
+        });
+
+        socket.on('error', (data: ErrorData) => {
+            // Don't change phase for non-critical errors
+            setState((s) => ({ ...s, error: data }));
         });
 
         // ─── App backgrounding ────────────────────────────
@@ -221,36 +292,49 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         return () => {
             cancelled = true;
             sub.remove();
-            // NOTE: We do NOT disconnect the socket here on purpose —
-            // the Provider lives at root level for the entire app lifetime.
+            if (socketRef.current) {
+                socketRef.current.removeAllListeners();
+            }
+            clearInterval(presenceInterval);
         };
-    }, []);
+    }, [user, profile]);
 
     // ─── Actions ─────────────────────────────────────────
 
     const joinQuickMatch = useCallback(() => {
         const pid = playerIdRef.current;
         if (!socketRef.current || !pid) return;
-        setState((s) => ({ ...s, phase: 'matchmaking', error: null }));
-        socketRef.current.emit('join:quickmatch', { playerId: pid });
-    }, []);
+        setState((s) => ({ ...s, phase: 'matchmaking', error: null, isRanked: false }));
+        socketRef.current.emit('join:quickmatch', { playerId: pid, username: state.myUsername });
+    }, [state.myUsername]);
+
+    const joinRankedMatch = useCallback(() => {
+        const pid = playerIdRef.current;
+        if (!socketRef.current || !pid) return;
+        setState((s) => ({ ...s, phase: 'matchmaking', error: null, isRanked: true }));
+        socketRef.current.emit('join:ranked', { playerId: pid, username: state.myUsername });
+    }, [state.myUsername]);
 
     const cancelQuickMatch = useCallback(() => {
         const pid = playerIdRef.current;
         if (!socketRef.current || !pid) return;
-
-        // Optimistically return home immediately for snappy UI
         setState((s) => ({ ...s, phase: 'home' }));
-
         socketRef.current.emit('quickmatch:leave', { playerId: pid });
     }, []);
+
+    const startAIGame = useCallback(() => {
+        const pid = playerIdRef.current;
+        if (!socketRef.current || !pid) return;
+        setState((s) => ({ ...s, phase: 'matchmaking', error: null, isRanked: false }));
+        socketRef.current.emit('join:ai', { playerId: pid, username: state.myUsername });
+    }, [state.myUsername]);
 
     const createLobby = useCallback(() => {
         const pid = playerIdRef.current;
         if (!socketRef.current || !pid) return;
         setState((s) => ({ ...s, error: null }));
-        socketRef.current.emit('lobby:create', { playerId: pid });
-    }, []);
+        socketRef.current.emit('lobby:create', { playerId: pid, username: state.myUsername });
+    }, [state.myUsername]);
 
     const cancelLobby = useCallback(() => {
         const pid = playerIdRef.current;
@@ -261,9 +345,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const joinLobby = useCallback((code: string) => {
         const pid = playerIdRef.current;
         if (!socketRef.current || !pid) return;
-        setState((s) => ({ ...s, phase: 'matchmaking', error: null }));
-        socketRef.current.emit('lobby:join', { playerId: pid, code });
-    }, []);
+        setState((s) => ({ ...s, phase: 'matchmaking', error: null, isRanked: false }));
+        socketRef.current.emit('lobby:join', { playerId: pid, username: state.myUsername, code });
+    }, [state.myUsername]);
 
     const sendSwap = useCallback((index1: number, index2: number) => {
         if (!socketRef.current) return;
@@ -277,6 +361,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const submitTurn = useCallback(() => {
         if (!socketRef.current) return;
+        setState((s) => ({ ...s, myMoveSubmitted: true }));
         socketRef.current.emit('turn:submit');
     }, []);
 
@@ -293,10 +378,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             lobbyCode: null,
             gameId: null,
             opponentId: null,
+            opponentUsername: 'Player',
             board: [],
-            activePlayerId: null,
-            turnNumber: 0,
-            turnDeadline: 0,
+            roundNumber: 0,
+            roundDeadline: 0,
+            myMoveSubmitted: false,
+            opponentSubmitted: false,
             myFeedback: null,
             opponentFeedback: null,
             gameOver: null,
@@ -313,12 +400,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, hasPlayedIntro: played }));
     }, []);
 
+    const updateUsername = useCallback(async (name: string) => {
+        if (!user || !profile) return;
+        const trimmed = name.trim().slice(0, 15) || 'Player';
+
+        const { error } = await supabase
+            .from('profiles')
+            .update({ username: trimmed })
+            .eq('id', profile.id);
+
+        if (!error) {
+            setState((s) => ({ ...s, myUsername: trimmed }));
+        } else {
+            setState((s) => ({ ...s, error: { code: 'UPDATE_FAILED', message: error.message } }));
+        }
+    }, [user, profile]);
+
+    const retryConnection = useCallback(() => {
+        setState((s) => ({ ...s, connectionStatus: 'connecting', connectionErrorMessage: null }));
+        if (socketRef.current) {
+            socketRef.current.connect();
+        }
+    }, []);
+
     return (
         <GameContext.Provider
             value={{
                 ...state,
                 joinQuickMatch,
+                joinRankedMatch,
                 cancelQuickMatch,
+                startAIGame,
                 createLobby,
                 cancelLobby,
                 joinLobby,
@@ -329,6 +441,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 resetToHome,
                 clearError,
                 setHasPlayedIntro,
+                updateUsername,
+                retryConnection,
             }}
         >
             {children}

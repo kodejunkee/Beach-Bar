@@ -17,6 +17,7 @@ export interface Feedback {
 export interface Player {
     playerId: string;
     socketId: string;
+    username: string;
     connected: boolean;
 }
 
@@ -36,12 +37,12 @@ export interface GameState {
     solution: BottleColor[];
     players: Record<string, PlayerState>;
     playerOrder: [string, string];
-    activePlayerId: string;
-    turnNumber: number;
-    turnDeadline: number;
-    turnTimer: ReturnType<typeof setTimeout> | null;
+    roundNumber: number;
+    roundDeadline: number;
+    roundTimer: ReturnType<typeof setTimeout> | null;
     winnerId: string | null;
     disconnectTimers: Record<string, ReturnType<typeof setTimeout>>;
+    isRanked: boolean;
 }
 
 // ═══ Lobby ═══
@@ -57,16 +58,30 @@ export interface Lobby {
 
 // ═══ Client → Server Events ═══
 export interface ClientToServerEvents {
-    'join:quickmatch': (data: { playerId: string }) => void;
+    'join:quickmatch': (data: { playerId: string; username: string }) => void;
+    'join:ranked': (data: { playerId: string; username: string }) => void;
     'quickmatch:leave': (data: { playerId: string }) => void;
-    'lobby:create': (data: { playerId: string }) => void;
-    'lobby:join': (data: { playerId: string; code: string }) => void;
+    'lobby:create': (data: { playerId: string; username: string }) => void;
+    'lobby:join': (data: { playerId: string; username: string; code: string }) => void;
     'lobby:leave': (data: { playerId: string }) => void;
+    'join:ai': (data: { playerId: string; username: string }) => void;
     'move:swap': (data: { index1: number; index2: number }) => void;
     'move:undo': () => void;
     'turn:submit': () => void;
     'game:surrender': (data: { playerId: string }) => void;
     'reconnect:game': (data: { playerId: string; gameId: string }) => void;
+}
+
+// ═══ Reward Types ═══
+export interface GameOverRewards {
+    exp: number;
+    gold: number;
+    leveledUp?: boolean;
+    newLevel?: number;
+    rpChange?: number;
+    newRp?: number;
+    newRank?: string;
+    rankChanged?: 'promoted' | 'demoted' | null;
 }
 
 // ═══ Server → Client Events ═══
@@ -80,18 +95,21 @@ export interface ServerToClientEvents {
         gameId: string;
         board: BottleColor[];
         yourPlayerId: string;
+        yourFrame: string | null;
         opponentId: string;
-        activePlayerId: string;
-        turnDeadline: number;
-        turnDuration: number;
-        turnNumber: number;
+        opponentUsername: string;
+        opponentFrame: string | null;
+        roundDeadline: number;
+        roundDuration: number;
+        roundNumber: number;
+        isRanked: boolean;
     }) => void;
     'board:update': (data: { board: BottleColor[] }) => void;
-    'turn:update': (data: {
-        activePlayerId: string;
-        turnNumber: number;
-        turnDeadline: number;
-        turnDuration: number;
+    'player:submitted': (data: { playerId: string }) => void;
+    'round:update': (data: {
+        roundNumber: number;
+        roundDeadline: number;
+        roundDuration: number;
         yourFeedback: Feedback | null;
         opponentFeedback: Feedback | null;
     }) => void;
@@ -100,7 +118,9 @@ export interface ServerToClientEvents {
         reason: 'solved' | 'forfeit' | 'surrender';
         solution: BottleColor[];
         finalBoards: Record<string, BottleColor[]>;
+        rewards?: GameOverRewards;
     }) => void;
     'opponent:status': (data: { connected: boolean }) => void;
     'error': (data: { code: string; message: string }) => void;
 }
+

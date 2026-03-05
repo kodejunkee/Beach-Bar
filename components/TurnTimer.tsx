@@ -8,26 +8,24 @@ interface TurnTimerProps {
 }
 
 export default function TurnTimer({ turnDeadline, turnDuration, isMyTurn }: TurnTimerProps) {
-    const [remaining, setRemaining] = useState(() => {
-        const diff = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
-        return diff;
-    });
+    const maxSeconds = Math.round(turnDuration / 1000);
     const pulseAnim = useRef(new Animated.Value(1)).current;
-    // Track the max seconds seen for this deadline (used for progress bar)
-    const maxSeenRef = useRef(remaining);
 
-    // Recompute max and remaining whenever deadline changes
+    const computeRemaining = () => {
+        if (!turnDeadline || turnDeadline <= 0) return maxSeconds; // Not started yet
+        const diff = Math.ceil((turnDeadline - Date.now()) / 1000);
+        return Math.max(0, Math.min(diff, maxSeconds));
+    };
+
+    const [remaining, setRemaining] = useState(computeRemaining);
+
+    // Recompute whenever deadline changes
     useEffect(() => {
-        const initialRemaining = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
-        const maxFromDuration = Math.round(turnDuration / 1000);
-        maxSeenRef.current = Math.max(initialRemaining, maxFromDuration);
-        setRemaining(initialRemaining);
 
         const interval = setInterval(() => {
-            const now = Date.now();
-            const diff = Math.max(0, Math.ceil((turnDeadline - now) / 1000));
-            setRemaining(diff);
-            if (diff <= 0) clearInterval(interval);
+            const r = computeRemaining();
+            setRemaining(r);
+            if (r <= 0) clearInterval(interval);
         }, 100);
 
         return () => clearInterval(interval);
@@ -43,7 +41,6 @@ export default function TurnTimer({ turnDeadline, turnDuration, isMyTurn }: Turn
         }
     }, [remaining]);
 
-    const maxSeconds = maxSeenRef.current || Math.round(turnDuration / 1000);
     const barWidth = Math.max(0, (remaining / maxSeconds) * 100);
     const barColor = remaining > 5 ? '#2ECC71' : remaining > 3 ? '#F1C40F' : '#E74C3C';
 
@@ -58,7 +55,7 @@ export default function TurnTimer({ turnDeadline, turnDuration, isMyTurn }: Turn
                 {remaining > 0 ? `${remaining}s` : "Time's up!"}
             </Animated.Text>
             <Text style={styles.label}>
-                {isMyTurn ? 'Your Turn' : "Opponent's Turn"}
+                {isMyTurn ? 'YOUR TURN' : 'SUBMITTED'}
             </Text>
         </View>
     );
