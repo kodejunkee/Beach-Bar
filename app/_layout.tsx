@@ -6,6 +6,8 @@ import { GameProvider } from '@/context/GameContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { View, ActivityIndicator } from 'react-native';
 
+import BackgroundMusicManager from '@/components/BackgroundMusicManager';
+
 function RootNavigation() {
     const { session, loading } = useAuth();
     const segments = useSegments();
@@ -34,6 +36,7 @@ function RootNavigation() {
 
     return (
         <GameProvider>
+            <BackgroundMusicManager />
             <StatusBar style="light" />
             <Stack
                 screenOptions={{

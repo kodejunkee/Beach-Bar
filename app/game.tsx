@@ -7,7 +7,6 @@ import TurnTimer from '@/components/TurnTimer';
 import FeedbackDisplay from '@/components/FeedbackDisplay';
 import GameStatusBar from '@/components/StatusBar';
 import ResultsModal from '@/components/ResultsModal';
-import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
 
 const GAME_BG = require('@/assets/images/backgrounds/game screen beach background.png');
 const ICON_CHECKMARK = require('@/assets/images/UI/icons/submit.png');
@@ -18,8 +17,6 @@ const GAME_MUSIC = require('@/assets/audio/game_screen_music.mp3');
 
 export default function GameScreen() {
     const [hasSwapped, setHasSwapped] = useState(false);
-
-    useBackgroundMusic(GAME_MUSIC);
 
     const {
         phase,
@@ -41,6 +38,7 @@ export default function GameScreen() {
         surrender,
         resetToHome,
         clearError,
+        isRanked,
         myEquippedFrame,
         opponentEquippedFrame,
     } = useGame();
@@ -160,7 +158,7 @@ export default function GameScreen() {
                                 <Text style={styles.equippedFrame}>{myEquippedFrame}</Text>
                             )}
                             <View style={styles.profileIconPlaceholder}>
-                                <Text style={styles.profileIconText}>{myUsername.charAt(0).toUpperCase()}</Text>
+                                <Text style={styles.profileIconText}>{(myUsername || 'P').charAt(0).toUpperCase()}</Text>
                             </View>
                         </View>
                         <Text style={styles.playerNameText} numberOfLines={1}>{myUsername}</Text>
@@ -181,7 +179,7 @@ export default function GameScreen() {
                             <Text style={styles.equippedFrame}>{opponentEquippedFrame}</Text>
                         )}
                         <View style={styles.profileIconPlaceholder}>
-                            <Text style={styles.profileIconText}>{opponentUsername.charAt(0).toUpperCase()}</Text>
+                            <Text style={styles.profileIconText}>{(opponentUsername || 'P').charAt(0).toUpperCase()}</Text>
                         </View>
                     </View>
                 </View>
@@ -253,9 +251,11 @@ export default function GameScreen() {
                         visible={true}
                         winnerId={gameOver.winnerId}
                         myPlayerId={playerId}
-                        reason={gameOver.reason}
-                        solution={gameOver.solution}
+                        reason={gameOver.reason || 'solved'}
+                        solution={gameOver.solution || []}
                         onPlayAgain={handlePlayAgain}
+                        isRanked={isRanked}
+                        rewards={gameOver.rewards || null}
                     />
                 )}
 

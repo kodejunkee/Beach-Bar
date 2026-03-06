@@ -19,7 +19,6 @@ import { router } from 'expo-router';
 import { useGame } from '@/context/GameContext';
 import { useAuth } from '@/context/AuthContext';
 import * as Clipboard from 'expo-clipboard';
-import { useBackgroundMusic } from '@/hooks/useBackgroundMusic';
 import { getRankIcon } from '@/shared/types';
 import EditProfileModal from '@/components/EditProfileModal';
 import InventoryModal from '@/components/InventoryModal';
@@ -33,7 +32,6 @@ const HOME_MUSIC = require('@/assets/audio/home_screen_music.mp3');
 
 // Other UI assets
 const LOBBY_FRAME = require('@/assets/images/UI/frames/lobby code background.png');
-const SETTINGS_FRAME = require('@/assets/images/UI/frames/settings background.png');
 const IMG_TITLE = require('@/assets/images/UI/banners/beach bar title.png');
 const ICON_SETTINGS = require('@/assets/images/UI/icons/settings.png');
 const ICON_MUTE = require('@/assets/images/UI/icons/mute.png');
@@ -76,14 +74,11 @@ export default function HomeScreen() {
             }).start(() => setShowSettings(false));
         }
     };
-    const [isMuted, setIsMuted] = useState(false);
     const [copied, setCopied] = useState(false);
-
-    useBackgroundMusic(HOME_MUSIC, isMuted);
     const [lobbyCountdown, setLobbyCountdown] = useState(300);
     const lobbyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const { profile, refreshProfile } = useAuth();
+    const { profile, signOut, refreshProfile } = useAuth();
     const {
         connectionStatus,
         connectionErrorMessage,
@@ -104,6 +99,8 @@ export default function HomeScreen() {
         hasPlayedIntro,
         setHasPlayedIntro,
         updateUsername,
+        isMuted,
+        setIsMuted,
     } = useGame();
 
     const connected = connectionStatus === 'connected';
@@ -779,21 +776,17 @@ export default function HomeScreen() {
                                     }, {
                                         scale: settingsAnim.interpolate({
                                             inputRange: [0, 1],
-                                            outputRange: [0.9, 1.15], // Scale it up proportionally 15%
+                                            outputRange: [0.9, 1.05], // Reduced scale factor
                                         }),
                                     }],
                                 },
                             ]}
                         >
-                            <ImageBackground
-                                source={SETTINGS_FRAME}
-                                style={styles.settingsFrame}
-                                resizeMode="contain"
-                            >
+                            <View style={styles.settingsFrame}>
                                 <View style={styles.settingsContent}>
                                     <TouchableOpacity
                                         style={styles.muteRow}
-                                        onPress={() => setIsMuted(prev => !prev)}
+                                        onPress={() => setIsMuted(!isMuted)}
                                         activeOpacity={0.7}
                                     >
                                         <Image
@@ -806,6 +799,17 @@ export default function HomeScreen() {
                                     </TouchableOpacity>
 
                                     <TouchableOpacity
+                                        style={[styles.muteRow, styles.logoutRow]}
+                                        onPress={() => {
+                                            toggleSettings(false);
+                                            signOut();
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={styles.logoutLabel}>Logout</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
                                         style={styles.settingsCloseBtn}
                                         onPress={() => toggleSettings(false)}
                                         activeOpacity={0.8}
@@ -813,7 +817,7 @@ export default function HomeScreen() {
                                         <Text style={styles.settingsCloseBtnText}>Close</Text>
                                     </TouchableOpacity>
                                 </View>
-                            </ImageBackground>
+                            </View>
                         </Animated.View>
                     </>
                 )}
@@ -1066,25 +1070,32 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     settingsFrame: {
-        width: 380,
-        height: 520, // Increased height to allow it to be larger before scaling
-        justifyContent: 'center',
+        width: 280, // More compact width
+        backgroundColor: '#1A1A2E',
+        borderRadius: 20,
+        borderWidth: 2,
+        borderColor: '#D4A76A',
+        paddingVertical: 30, // Reduced padding
+        paddingHorizontal: 20,
         alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.5,
+        shadowRadius: 15,
+        elevation: 10,
     },
     settingsContent: {
         width: '100%',
-        paddingHorizontal: 60,
-        paddingTop: 80, // Bumped down from top umbrella
         alignItems: 'center',
-        gap: 20,
+        gap: 15, // Tighter spacing
     },
     muteRow: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.2)',
-        borderRadius: 14,
-        paddingVertical: 14,
-        paddingHorizontal: 20,
+        borderRadius: 12,
+        paddingVertical: 12, // More compact row
+        paddingHorizontal: 16,
         width: '100%',
         gap: 16,
     },
@@ -1096,6 +1107,15 @@ const styles = StyleSheet.create({
         color: '#F5E6C8',
         fontSize: 16,
         fontWeight: '600',
+    },
+    logoutRow: {
+        backgroundColor: 'rgba(231, 76, 60, 0.15)',
+        marginTop: 8,
+    },
+    logoutLabel: {
+        color: '#E74C3C',
+        fontSize: 14,
+        fontWeight: '700',
     },
     settingsCloseBtn: {
         backgroundColor: 'rgba(0, 0, 0, 0.25)',

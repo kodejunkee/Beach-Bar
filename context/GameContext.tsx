@@ -52,6 +52,7 @@ interface GameState {
     error: ErrorData | null;
     hasPlayedIntro: boolean;
     isRanked: boolean;
+    isMuted: boolean;
 }
 
 interface GameContextValue extends GameState {
@@ -71,6 +72,7 @@ interface GameContextValue extends GameState {
     setHasPlayedIntro: (played: boolean) => void;
     updateUsername: (name: string) => void;
     retryConnection: () => void;
+    setIsMuted: (muted: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 // ─── Context ─────────────────────────────────────────────
@@ -114,6 +116,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         error: null,
         hasPlayedIntro: false,
         isRanked: false,
+        isMuted: false,
     });
 
     const { user, profile } = useAuth();
@@ -416,6 +419,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         }
     }, [user, profile]);
 
+    const setIsMuted = useCallback((muted: boolean | ((prev: boolean) => boolean)) => {
+        setState((s) => ({
+            ...s,
+            isMuted: typeof muted === 'function' ? muted(s.isMuted) : muted
+        }));
+    }, []);
+
     const retryConnection = useCallback(() => {
         setState((s) => ({ ...s, connectionStatus: 'connecting', connectionErrorMessage: null }));
         if (socketRef.current) {
@@ -443,6 +453,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 setHasPlayedIntro,
                 updateUsername,
                 retryConnection,
+                setIsMuted,
             }}
         >
             {children}
