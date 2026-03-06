@@ -3,6 +3,18 @@
         "version": ">= 3.0.0"
     },
     "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            },
+            "env": {
+                "EXPO_PUBLIC_SERVER_URL": "https://beach-bar-vbuw.onrender.com",
+                "EXPO_PUBLIC_SUPABASE_URL": "https://jdsrvcvtvwiizrhyafnf.supabase.co",
+                "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_eXn4MmMPOKPdjzHSwf0MNg_yioQbtF7"
+            }
+        },
         "preview": {
             "android": {
                 "buildType": "apk"
