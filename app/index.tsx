@@ -276,69 +276,103 @@ export default function HomeScreen() {
                     style={styles.container}
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 >
-                    {/* Top bar: Profile + Settings */}
-                    <View style={styles.topBar}>
-                        <TouchableOpacity
-                            style={styles.profileBadge}
-                            onPress={() => setShowEditProfile(true)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.profileIconContainer}>
-                                {equippedFrameUrl && (
-                                    <Text style={styles.equippedFrame}>{equippedFrameUrl}</Text>
-                                )}
-                                <View style={styles.profileIconPlaceholder}>
-                                    <Text style={styles.profileIconText}>{myUsername.charAt(0).toUpperCase()}</Text>
+                    {/* New Header Section */}
+                    <View style={[styles.headerContainer, { paddingTop: 35 * scaleFactor, paddingHorizontal: 12 * scaleFactor }]}>
+                        {/* Profile Section (Left) */}
+                        <View style={[styles.profileSection, { height: 52 * scaleFactor, paddingRight: 10 * scaleFactor }]}>
+                            <TouchableOpacity
+                                style={[styles.avatarFrame, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 8 * scaleFactor, borderWidth: 2 * scaleFactor }]}
+                                onPress={() => setShowEditProfile(true)}
+                                activeOpacity={0.8}
+                            >
+                                <View style={styles.avatarInner}>
+                                    <Text style={[styles.avatarLetter, { fontSize: 22 * scaleFactor }]}>{myUsername.charAt(0).toUpperCase()}</Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <View style={[styles.infoBox, { marginLeft: 8 * scaleFactor }]}>
+                                <Text style={[styles.headerUsername, { fontSize: 13 * scaleFactor }]} numberOfLines={1}>{myUsername}</Text>
+                                <View style={[styles.levelBadge, { paddingHorizontal: 6 * scaleFactor, paddingVertical: 1 * scaleFactor, borderRadius: 4 * scaleFactor, marginTop: 2 * scaleFactor }]}>
+                                    <Text style={[styles.levelText, { fontSize: 10 * scaleFactor }]}>LVL {profile?.level || 1}</Text>
                                 </View>
                             </View>
-                            <View>
-                                <Text style={styles.profileNameText} numberOfLines={1}>{myUsername}</Text>
-                                {profile && (
-                                    <View style={styles.statsRow}>
-                                        <View style={styles.statBadge}>
-                                            <Text style={styles.statText}>⭐ Lvl {profile.level}</Text>
-                                        </View>
-                                        <View style={[styles.statBadge, { backgroundColor: 'rgba(212, 167, 106, 0.2)' }]}>
-                                            <Text style={styles.statText}>🪙 {profile.gold}</Text>
-                                        </View>
-                                        <View style={[styles.statBadge, { backgroundColor: 'rgba(108, 92, 231, 0.2)' }]}>
-                                            <Text style={styles.statText}>💎 {profile.diamonds}</Text>
-                                        </View>
-                                    </View>
-                                )}
-                                {profile && (
-                                    <View style={[styles.rankBadge, { marginTop: 4 * scaleFactor }]}>
-                                        <Text style={styles.rankText}>
-                                            {getRankIcon(profile.current_rank)} {profile.current_rank}
-                                        </Text>
-                                    </View>
-                                )}
+
+                            {profile && (
+                                <View style={[styles.headerRankIcon, { marginLeft: 6 * scaleFactor }]}>
+                                    <Text style={{ fontSize: 22 * scaleFactor }}>{getRankIcon(profile.current_rank)}</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Currency Section (Right) */}
+                        <View style={[styles.currencySection, { gap: 8 * scaleFactor }]}>
+                            <View style={[styles.currencyItem, { height: 32 * scaleFactor, paddingLeft: 4 * scaleFactor, paddingRight: 2 * scaleFactor, borderWidth: 1 * scaleFactor }]}>
+                                <Text style={[styles.currencyIcon, { fontSize: 15 * scaleFactor }]}>🪙</Text>
+                                <View style={[styles.currencyValueBg, { minWidth: 38 * scaleFactor, paddingHorizontal: 5 * scaleFactor }]}>
+                                    <Text style={[styles.currencyValue, { fontSize: 12 * scaleFactor }]}>{profile?.gold || 0}</Text>
+                                </View>
+                                <TouchableOpacity style={[styles.addBtn, { width: 20 * scaleFactor, height: 20 * scaleFactor, borderRadius: 10 * scaleFactor, borderWidth: 1 * scaleFactor }]}>
+                                    <Text style={[styles.addBtnText, { fontSize: 14 * scaleFactor, lineHeight: 16 * scaleFactor }]}>+</Text>
+                                </TouchableOpacity>
                             </View>
-                        </TouchableOpacity>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-                            <TouchableOpacity
-                                onPress={() => setShowFriends(true)}
-                                activeOpacity={0.7}
-                                style={styles.topBarIconBtn}
-                            >
-                                <Text style={{ fontSize: 24 }}>👥</Text>
-                                {pendingRequests > 0 && (
-                                    <View style={styles.badge}>
-                                        <Text style={styles.badgeText}>{pendingRequests}</Text>
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={() => toggleSettings(true)}
-                                activeOpacity={0.7}
-                            >
-                                <Image source={ICON_SETTINGS} style={styles.settingsIcon} />
-                            </TouchableOpacity>
+
+                            <View style={[styles.currencyItem, { height: 32 * scaleFactor, paddingLeft: 4 * scaleFactor, paddingRight: 2 * scaleFactor, borderWidth: 1 * scaleFactor }]}>
+                                <Text style={[styles.currencyIcon, { fontSize: 15 * scaleFactor }]}>💎</Text>
+                                <View style={[styles.currencyValueBg, { minWidth: 38 * scaleFactor, paddingHorizontal: 5 * scaleFactor }]}>
+                                    <Text style={[styles.currencyValue, { fontSize: 12 * scaleFactor }]}>{profile?.diamonds || 0}</Text>
+                                </View>
+                                <TouchableOpacity style={[styles.addBtn, { width: 20 * scaleFactor, height: 20 * scaleFactor, borderRadius: 10 * scaleFactor, borderWidth: 1 * scaleFactor }]}>
+                                    <Text style={[styles.addBtnText, { fontSize: 14 * scaleFactor, lineHeight: 16 * scaleFactor }]}>+</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
 
-                    {/* Title */}
-                    <Animated.View style={[styles.header, { transform: [{ translateY: titleY }] }]}>
+                    {/* Sub-Header Navigation Buttons */}
+                    <View style={[styles.navRow, { marginTop: 12 * scaleFactor, gap: 8 * scaleFactor, paddingHorizontal: 12 * scaleFactor }]}>
+                        <TouchableOpacity style={[styles.navBtn, { maxWidth: 70 * scaleFactor }]} onPress={() => setShowFriends(true)}>
+                            <View style={[styles.navIconBg, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 12 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                <Text style={[styles.navIcon, { fontSize: 24 * scaleFactor }]}>👥</Text>
+                                {pendingRequests > 0 && (
+                                    <View style={[styles.navBadge, { minWidth: 18 * scaleFactor, height: 18 * scaleFactor, borderRadius: 9 * scaleFactor, top: -4 * scaleFactor, right: -4 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                        <Text style={[styles.navBadgeText, { fontSize: 9 * scaleFactor }]}>{pendingRequests}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <Text style={[styles.navLabel, { fontSize: 9 * scaleFactor, marginTop: 4 * scaleFactor }]} adjustsFontSizeToFit numberOfLines={1}>FRIENDS</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.navBtn, { maxWidth: 70 * scaleFactor }]} onPress={() => setShowMonthlyPass(true)}>
+                            <View style={[styles.navIconBg, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 12 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                <Text style={[styles.navIcon, { fontSize: 24 * scaleFactor }]}>🎫</Text>
+                            </View>
+                            <Text style={[styles.navLabel, { fontSize: 9 * scaleFactor, marginTop: 4 * scaleFactor }]} adjustsFontSizeToFit numberOfLines={1}>PASS</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.navBtn, { maxWidth: 70 * scaleFactor }]} onPress={() => Alert.alert("Coming Soon", "Quests feature will be added in a future update!")}>
+                            <View style={[styles.navIconBg, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 12 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                <Text style={[styles.navIcon, { fontSize: 24 * scaleFactor }]}>�</Text>
+                            </View>
+                            <Text style={[styles.navLabel, { fontSize: 9 * scaleFactor, marginTop: 4 * scaleFactor }]} adjustsFontSizeToFit numberOfLines={1}>QUESTS</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.navBtn, { maxWidth: 70 * scaleFactor }]} onPress={() => router.push('/shop')}>
+                            <View style={[styles.navIconBg, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 12 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                <Text style={[styles.navIcon, { fontSize: 24 * scaleFactor }]}>�</Text>
+                            </View>
+                            <Text style={[styles.navLabel, { fontSize: 9 * scaleFactor, marginTop: 4 * scaleFactor }]} adjustsFontSizeToFit numberOfLines={1}>SHOP</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={[styles.navBtn, { maxWidth: 70 * scaleFactor }]} onPress={() => toggleSettings(true)}>
+                            <View style={[styles.navIconBg, { width: 52 * scaleFactor, height: 52 * scaleFactor, borderRadius: 12 * scaleFactor, borderWidth: 2 * scaleFactor }]}>
+                                <Text style={[styles.navIcon, { fontSize: 24 * scaleFactor }]}>⚙️</Text>
+                            </View>
+                            <Text style={[styles.navLabel, { fontSize: 9 * scaleFactor, marginTop: 4 * scaleFactor }]} adjustsFontSizeToFit numberOfLines={1}>SETTINGS</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Title with extra breathing space */}
+                    <Animated.View style={[styles.header, { transform: [{ translateY: titleY }], marginTop: 60 * scaleFactor, marginBottom: 60 * scaleFactor }]}>
                         <Image
                             source={IMG_TITLE}
                             style={[
@@ -492,60 +526,6 @@ export default function HomeScreen() {
                                         <Text style={[styles.aiBtnText, { fontSize: 20 * scaleFactor }]}>🌍  Multiplayer</Text>
                                     </TouchableOpacity>
 
-                                    {/* Shop and Inventory Row */}
-                                    <View style={{ flexDirection: 'row', gap: 10 * scaleFactor, marginTop: 4 }}>
-                                        <TouchableOpacity
-                                            onPress={() => router.push('/shop')}
-                                            activeOpacity={0.7}
-                                            style={[
-                                                styles.aiBtn,
-                                                {
-                                                    width: 125 * scaleFactor,
-                                                    paddingVertical: 14 * scaleFactor,
-                                                    borderRadius: 14 * scaleFactor,
-                                                    backgroundColor: '#D4AF37',
-                                                    borderColor: '#FFD700',
-                                                }
-                                            ]}
-                                        >
-                                            <Text style={[styles.aiBtnText, { fontSize: 13 * scaleFactor, color: '#333' }]}>🏪 Shop</Text>
-                                        </TouchableOpacity>
-
-                                        <TouchableOpacity
-                                            onPress={() => setShowInventory(true)}
-                                            activeOpacity={0.7}
-                                            style={[
-                                                styles.aiBtn,
-                                                {
-                                                    width: 125 * scaleFactor,
-                                                    paddingVertical: 14 * scaleFactor,
-                                                    borderRadius: 14 * scaleFactor,
-                                                    backgroundColor: '#4A90E2',
-                                                    borderColor: '#5BADE2',
-                                                }
-                                            ]}
-                                        >
-                                            <Text style={[styles.aiBtnText, { fontSize: 13 * scaleFactor }]}>🎒 Bag</Text>
-                                        </TouchableOpacity>
-                                    </View>
-
-                                    <TouchableOpacity
-                                        onPress={() => setShowMonthlyPass(true)}
-                                        activeOpacity={0.7}
-                                        style={[
-                                            styles.aiBtn,
-                                            {
-                                                width: 260 * scaleFactor,
-                                                paddingVertical: 12 * scaleFactor,
-                                                borderRadius: 14 * scaleFactor,
-                                                backgroundColor: '#6c5ce7',
-                                                borderColor: '#a29bfe',
-                                                marginTop: 10 * scaleFactor,
-                                            }
-                                        ]}
-                                    >
-                                        <Text style={[styles.aiBtnText, { fontSize: 16 * scaleFactor }]}>🎟️ MONTHLY PASS</Text>
-                                    </TouchableOpacity>
                                 </>
                             )}
 
@@ -731,6 +711,7 @@ export default function HomeScreen() {
                 <EditProfileModal
                     visible={showEditProfile}
                     currentUsername={myUsername}
+                    profile={profile}
                     onSave={updateUsername}
                     onClose={() => setShowEditProfile(false)}
                 />
@@ -836,19 +817,183 @@ const styles = StyleSheet.create({
     },
     container: {
         flex: 1,
-        justifyContent: 'center',
+        // justifyContent: 'center',
         alignItems: 'center',
         padding: 24,
+        paddingHorizontal: 0,
     },
-    topBar: {
+    headerContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        position: 'absolute',
-        top: 52,
-        left: 20,
-        right: 20,
+        paddingHorizontal: 20,
+        paddingTop: 52,
+        width: '100%',
         zIndex: 10,
+    },
+    profileSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        borderRadius: 12,
+        paddingRight: 15,
+        height: 56,
+    },
+    avatarFrame: {
+        width: 56,
+        height: 56,
+        borderWidth: 2,
+        borderColor: '#7D5FFF',
+        borderRadius: 8,
+        backgroundColor: '#1A1A2E',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+    },
+    avatarInner: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#30304A',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarLetter: {
+        color: '#FFF',
+        fontSize: 24,
+        fontWeight: '900',
+    },
+    infoBox: {
+        marginLeft: 12,
+        justifyContent: 'center',
+    },
+    headerUsername: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    levelBadge: {
+        backgroundColor: '#F1C40F',
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 4,
+        marginTop: 2,
+        alignSelf: 'flex-start',
+    },
+    levelText: {
+        color: '#000',
+        fontSize: 10,
+        fontWeight: '900',
+    },
+    headerRankIcon: {
+        marginLeft: 8,
+    },
+    currencySection: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    currencyItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderRadius: 20,
+        paddingLeft: 4,
+        paddingRight: 2,
+        height: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    currencyIcon: {
+        fontSize: 16,
+        zIndex: 2,
+    },
+    currencyValueBg: {
+        minWidth: 50,
+        paddingHorizontal: 8,
+        alignItems: 'center',
+    },
+    currencyValue: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '900',
+    },
+    addBtn: {
+        backgroundColor: '#2ECC71',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#1A1A2E',
+    },
+    addBtnText: {
+        color: '#FFF',
+        fontSize: 16,
+        fontWeight: '900',
+        lineHeight: 18,
+    },
+    navRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        width: '100%',
+        paddingHorizontal: 20,
+        marginTop: 15,
+        gap: 10,
+        zIndex: 5,
+    },
+    navBtn: {
+        alignItems: 'center',
+        flex: 1,
+        maxWidth: 70,
+    },
+    navIconBg: {
+        width: 54,
+        height: 54,
+        backgroundColor: 'rgba(26, 26, 46, 0.9)',
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#30304A',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    navIcon: {
+        fontSize: 26,
+    },
+    navLabel: {
+        color: '#FFF',
+        fontSize: 9,
+        fontWeight: '900',
+        marginTop: 4,
+        letterSpacing: 0.5,
+        textAlign: 'center',
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+    },
+    navBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#E74C3C',
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#1A1A2E',
+    },
+    navBadgeText: {
+        color: '#FFF',
+        fontSize: 10,
+        fontWeight: 'bold',
+        paddingHorizontal: 4,
     },
     profileBadge: {
         flexDirection: 'row',
@@ -896,7 +1041,6 @@ const styles = StyleSheet.create({
     },
     header: {
         alignItems: 'center',
-        marginBottom: 48,
     },
     titleImg: {
         width: 540,     // +30% from 416

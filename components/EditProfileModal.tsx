@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ImageBackground } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { getRankIcon } from '@/shared/types';
 
 interface EditProfileModalProps {
     visible: boolean;
     currentUsername: string;
+    profile: any;
     onSave: (newName: string) => void;
     onClose: () => void;
 }
 
-const PARCHMENT_BG = require('@/assets/images/UI/frames/lobby code background.png');
-
-export default function EditProfileModal({ visible, currentUsername, onSave, onClose }: EditProfileModalProps) {
+export default function EditProfileModal({ visible, currentUsername, profile, onSave, onClose }: EditProfileModalProps) {
     const [name, setName] = useState(currentUsername);
+    const [isEditingName, setIsEditingName] = useState(false);
 
     useEffect(() => {
         if (visible) {
             setName(currentUsername);
+            setIsEditingName(false);
         }
     }, [visible, currentUsername]);
 
@@ -24,42 +26,82 @@ export default function EditProfileModal({ visible, currentUsername, onSave, onC
         if (trimmed) {
             onSave(trimmed);
         }
-        onClose();
+        setIsEditingName(false);
     };
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
             <View style={styles.overlay}>
-                <ImageBackground source={PARCHMENT_BG} style={styles.card} resizeMode="contain">
-                    <View style={styles.content}>
-                        <Text style={styles.title}>Edit Profile</Text>
+                <View style={styles.card}>
+                    {/* Header with Title and Close */}
+                    <View style={styles.modalHeader}>
+                        <View style={styles.titleBanner}>
+                            <Text style={styles.titleBannerText}>PROFILE</Text>
+                        </View>
+                        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                            <Text style={styles.closeBtnText}>✖</Text>
+                        </TouchableOpacity>
+                    </View>
 
-                        <TextInput
-                            style={styles.input}
-                            value={name}
-                            onChangeText={setName}
-                            placeholder="Enter username"
-                            placeholderTextColor="#A08C75"
-                            maxLength={15}
-                            autoCorrect={false}
-                            autoCapitalize="words"
-                        />
-
-                        <View style={styles.actions}>
-                            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.8}>
-                                <Text style={styles.cancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.saveBtn, !name.trim() && styles.saveBtnDisabled]}
-                                onPress={handleSave}
-                                disabled={!name.trim()}
-                                activeOpacity={0.8}
-                            >
-                                <Text style={styles.saveText}>Save</Text>
+                    <View style={styles.mainContent}>
+                        {/* 1. Avatar Section (Fixed Width) */}
+                        <View style={styles.avatarContainer}>
+                            <TouchableOpacity style={styles.avatarFrame} activeOpacity={0.9}>
+                                <View style={styles.avatarInner}>
+                                    <Text style={styles.avatarLetter}>{currentUsername.charAt(0).toUpperCase()}</Text>
+                                </View>
+                                <View style={styles.editIconBadge}>
+                                    <Text style={styles.editIconText}>✎</Text>
+                                </View>
                             </TouchableOpacity>
                         </View>
+
+                        {/* 2. Middle Section (Stats & Name - Flex 1) */}
+                        <View style={styles.statsContainer}>
+                            <View style={styles.nameRow}>
+                                {isEditingName ? (
+                                    <TextInput
+                                        style={styles.nameInput}
+                                        value={name}
+                                        onChangeText={setName}
+                                        autoFocus
+                                        maxLength={15}
+                                        onBlur={handleSave}
+                                        onSubmitEditing={handleSave}
+                                    />
+                                ) : (
+                                    <TouchableOpacity style={styles.nameDisplayTray} onPress={() => setIsEditingName(true)}>
+                                        <Text style={styles.profileName} numberOfLines={1}>{currentUsername}</Text>
+                                        <Text style={styles.nameEditIcon}>✎</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            <View style={styles.statsList}>
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statIcon}>⭐</Text>
+                                    <Text style={styles.statLabel}>Ranked Points:</Text>
+                                    <Text style={styles.statValue}>{profile?.ranked_points || 0}</Text>
+                                </View>
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statIcon}>⚔️</Text>
+                                    <Text style={styles.statLabel}>Player Title:</Text>
+                                    <Text style={styles.statValue}>Novice</Text>
+                                </View>
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statIcon}>🏆</Text>
+                                    <Text style={styles.statLabel}>Achievements:</Text>
+                                    <Text style={styles.statValue}>0</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* 3. Rank Section (Fixed Width) */}
+                        <View style={styles.rankContainer}>
+                            <Text style={styles.rankIconBold}>{profile ? getRankIcon(profile.current_rank) : '?'}</Text>
+                        </View>
                     </View>
-                </ImageBackground>
+                </View>
             </View>
         </Modal>
     );
@@ -68,78 +110,175 @@ export default function EditProfileModal({ visible, currentUsername, onSave, onC
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(10, 10, 20, 0.7)',
-        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        justifyContent: 'flex-start',
         alignItems: 'center',
+        paddingTop: 100,
     },
     card: {
-        width: 340,
-        height: 380,
+        width: '95%',
+        maxWidth: 600,
+        backgroundColor: '#0A0A2E',
+        borderRadius: 16,
+        borderWidth: 2,
+        borderColor: '#00A8FF',
+        padding: 4,
+        overflow: 'hidden',
+    },
+    modalHeader: {
+        width: '100%',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: 54,
+        backgroundColor: '#00A8FF',
+        borderTopLeftRadius: 14,
+        borderTopRightRadius: 14,
+    },
+    titleBanner: {
+        backgroundColor: '#000',
+        paddingHorizontal: 25,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: '#FFF',
+    },
+    titleBannerText: {
+        color: '#FFF',
+        fontSize: 20,
+        fontWeight: '900',
+        letterSpacing: 3,
+    },
+    closeBtn: {
+        position: 'absolute',
+        right: 8,
+        top: 8,
+        width: 38,
+        height: 38,
+        backgroundColor: '#00A8FF',
+        borderRadius: 6,
+        borderWidth: 2.5,
+        borderColor: '#000',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    content: {
-        width: '100%',
-        paddingHorizontal: 54,
-        paddingTop: 80,
-        paddingBottom: 60,
-        alignItems: 'center',
-        gap: 20,
-    },
-    title: {
-        color: '#5C3D1A',
+    closeBtnText: {
+        color: '#FFF',
         fontSize: 22,
         fontWeight: '900',
-        letterSpacing: 2,
     },
-    input: {
-        backgroundColor: 'rgba(92, 61, 26, 0.08)',
-        borderColor: '#8A6338',
-        borderWidth: 2,
-        borderRadius: 12,
-        color: '#5C3D1A',
-        fontSize: 18,
-        fontWeight: '700',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        width: '100%',
-        textAlign: 'center',
-    },
-    actions: {
+    mainContent: {
         flexDirection: 'row',
-        gap: 12,
-        width: '100%',
+        padding: 12,
+        backgroundColor: '#05051A',
+        alignItems: 'center',
+        gap: 10,
+    },
+    avatarContainer: {
+        width: 60,
         justifyContent: 'center',
-        marginTop: 10,
+        alignItems: 'center',
     },
-    cancelBtn: {
-        backgroundColor: 'rgba(92, 61, 26, 0.1)',
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderRadius: 10,
+    avatarFrame: {
+        width: 56,
+        height: 56,
+        borderRadius: 8,
+        borderWidth: 2.5,
+        borderColor: '#8E9AAF',
+        backgroundColor: '#2A2A4A',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
     },
-    cancelText: {
-        color: '#8A6338',
-        fontSize: 15,
+    avatarInner: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#3D3D5D',
+        borderRadius: 6,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarLetter: {
+        color: '#FFF',
+        fontSize: 30,
+        fontWeight: '900',
+    },
+    editIconBadge: {
+        position: 'absolute',
+        bottom: -3,
+        right: -3,
+        backgroundColor: '#FFF',
+        width: 20,
+        height: 20,
+        borderRadius: 3,
+        borderWidth: 1,
+        borderColor: '#00A8FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    editIconText: {
+        fontSize: 12,
+        color: '#00A8FF',
+    },
+    statsContainer: {
+        flex: 1,
+        paddingHorizontal: 5,
+    },
+    nameRow: {
+        marginBottom: 8,
+    },
+    nameDisplayTray: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    profileName: {
+        color: '#00D2FF',
+        fontSize: 18,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    nameEditIcon: {
+        fontSize: 14,
+        color: '#00A8FF',
+        opacity: 0.8,
+    },
+    nameInput: {
+        color: '#00D2FF',
+        fontSize: 18,
+        fontWeight: '900',
+        borderBottomWidth: 1,
+        borderBottomColor: '#00D2FF',
+        padding: 0,
+    },
+    statsList: {
+        gap: 4,
+    },
+    statItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    statIcon: {
+        fontSize: 14,
+        width: 18,
+    },
+    statLabel: {
+        color: '#8E9AAF',
+        fontSize: 12,
         fontWeight: '700',
     },
-    saveBtn: {
-        backgroundColor: '#2ECC71',
-        paddingVertical: 12,
-        paddingHorizontal: 28,
-        borderRadius: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 3,
-        elevation: 4,
+    statValue: {
+        color: '#FFF',
+        fontSize: 12,
+        fontWeight: '900',
     },
-    saveBtnDisabled: {
-        opacity: 0.5,
+    rankContainer: {
+        width: 60,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    saveText: {
-        color: '#FFFFFF',
-        fontSize: 15,
-        fontWeight: '800',
+    rankIconBold: {
+        fontSize: 45,
     },
 });
