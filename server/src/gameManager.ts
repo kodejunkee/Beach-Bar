@@ -30,7 +30,7 @@ const REWARD_LOSER_EXP = 10;
 const REWARD_LOSER_GOLD = 5;
 
 function requiredExpForLevel(level: number): number {
-    return Math.floor(100 * Math.pow(level, 1.5));
+    return Math.floor(50 * Math.pow(level, 1.5));
 }
 
 /**
